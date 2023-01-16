@@ -16,6 +16,7 @@ pub struct MerkleTree {
 
 /// Given the hash of the left and right nodes, compute the hash of the parent node.
 fn hash_children(left: &H256, right: &H256) -> H256 {
+    //Jan. 15, 2023
     unimplemented!();
 }
 
