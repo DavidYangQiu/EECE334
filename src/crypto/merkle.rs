@@ -1,109 +1,122 @@
+// Reference
+// use the proferssor reference code for file:merkle.rs, which is released by proferssor in CAVAS
+// Jan. 30, 2023
+
 use super::hash::{Hashable, H256};
-use std::collections::VecDeque;
-use ring::digest;
+
+#[derive(Debug, Default, Clone)]
+struct MerkleTreeNode {
+    left: Option<Box<MerkleTreeNode>>,
+    right: Option<Box<MerkleTreeNode>>,
+    hash: H256,
+}
+
 /// A Merkle tree.
 #[derive(Debug, Default)]
 pub struct MerkleTree {
-    level:usize,
-    tree_node: H256,
+    root: MerkleTreeNode,
+    level_count: usize, // how many levels the tree has
+}
+
+/// Given the hash of the left and right nodes, compute the hash of the parent node.
+fn hash_children(left: &H256, right: &H256) -> H256 {
+    let concatenated = [left.as_ref(), right.as_ref()].concat();
+    ring::digest::digest(&ring::digest::SHA256, &concatenated).into()
+}
+
+/// Duplicate the last node in `nodes` to make its length even.
+fn duplicate_last_node(nodes: &mut Vec<Option<MerkleTreeNode>>) {
+    nodes.push(nodes.last().unwrap().clone());
 }
 
 impl MerkleTree {
     pub fn new<T>(data: &[T]) -> Self where T: Hashable, {
-        //unimplemented!()
-        let mut num_data = data.len();
-        let mut num_temp=0;
-        let mut tree_node: Vec<H256> = Vec::new();
-        let mut tree_queue: VecDeque<H256> = VecDeque::new();
+        assert!(!data.is_empty());
 
-        if num_data==0{
-            let scope: [u8; 32] = [0; 32];
-            tree_node.push(scope.into());
-
-            return MerkleTree{level:0, tree_node:tree_node};
+        // create the leaf nodes:
+        let mut curr_level: Vec<Option<MerkleTreeNode>> = Vec::new();
+        for item in data {
+            curr_level.push(Some(MerkleTreeNode { hash: item.hash(), left: None, right: None }));
         }
-
-        if num_data % 2 != 0 {
-            tree_queue.push_back(data[num_data - 1].hash());
-            num_data= num_data+1;
-        }
-
-        for t in data.into_iter() {
-            tree_queue.push_back(t.hash());
-        }
-
-        let mut num_data_temp = num_data;
-
-        while !tree_queue.is_empty() {
-            let mut tree_hash = digest::Context::new(&digest::SHA256);
-
-            let left_child = tree_queue.pop_front().unwrap();
-            tree_node.push(left_child);
-            num_temp = num_temp + 1;
-            tree_hash.update(left_child.as_ref());
-
-            let node_s = tree_queue.pop_front();
-            if node_s == None {break; }
-
-            let right_child = node_s.unwrap();
-            tree_node.push(right_child);
-            num_temp = num_temp + 1;
-            tree_hash.update(right_child.as_ref());
-
-            let node_parent: H256 = tree_hash.finish().into();
-            tree_queue.push_back(node_parent);
-
-            if num_temp != 2  && num_temp == num_data_temp {
-                num_temp = 0;
-                if (num_data_temp / 2) % 2 == 0 {
-                    num_data_temp = num_data_temp / 2;
-                } 
-                else {
-                    tree_queue.push_back(node_parent);
-                    num_data_temp = num_data_temp / 2 + 1;
-                }
+        let mut level_count = 1;
+        
+        // create the upper levels of the tree:
+        while curr_level.len() > 1 {
+            // Whenever a level of the tree has odd number of nodes, duplicate the last node to make the number even:
+            if curr_level.len() % 2 == 1 {
+                duplicate_last_node(&mut curr_level); // TODO: implement this helper function
             }
-        }
+            assert_eq!(curr_level.len() % 2, 0); // make sure we now have even number of nodes.
 
+            let mut next_level: Vec<Option<MerkleTreeNode>> = Vec::new();
+            for i in 0..curr_level.len() / 2 {
+                let left = curr_level[i * 2].take().unwrap();
+                let right = curr_level[i * 2 + 1].take().unwrap();
+                let hash = hash_children(&left.hash, &right.hash); // TODO: implement this helper function
+                next_level.push(Some(MerkleTreeNode { hash: hash, left: Some(Box::new(left)), right: Some(Box::new(right)) }));
+            }
+            curr_level = next_level;
+            level_count += 1;
+        }
         MerkleTree {
-            level: num_data.
-            tree_node: tree_node,
+            root: curr_level[0].take().unwrap(),
+            level_count: level_count,
         }
     }
 
     pub fn root(&self) -> H256 {
-        //unimplemented!()
-        self.tree_node[self.tree_node.len() - 1]
-
+        self.root.hash
     }
 
     /// Returns the Merkle Proof of data at index i
     pub fn proof(&self, index: usize) -> Vec<H256> {
-        //unimplemented!()
+        let mut binary_index = Vec::new();
+        let mut index = index;
+        for _ in 0..(self.level_count - 1) {
+            binary_index.push(index % 2);
+            index /= 2;
+        }
+        let mut node = &self.root;
+        let mut proof_rev = Vec::new();
+        for bit in binary_index.iter().rev() { // we traverse from root, thus in reverse order:
+            match bit {
+                0 => { // data is on the left, sibling on the right:
+                    proof_rev.push(node.right.as_ref().unwrap().hash);
+                    node = node.left.as_ref().unwrap();
+                },
+                1 => { // data is on the right, sibling on the left:
+                    proof_rev.push(node.left.as_ref().unwrap().hash);
+                    node = node.right.as_ref().unwrap();
+                },
+                _ => unreachable!(),
+            }
+        }
+        proof_rev.into_iter().rev().collect()
     }
 }
 
 /// Verify that the datum hash with a vector of proofs will produce the Merkle root. Also need the
 /// index of datum and `leaf_size`, the total number of leaves.
 pub fn verify(root: &H256, datum: &H256, proof: &[H256], index: usize, leaf_size: usize) -> bool {
-   // unimplemented!()
-   let mut idx = index;
-   let mut node = *datum;
-   let mut temp = digest::Context::new(&digest::SHA256);
-
-   for t in 0..(proof.len()) {
-    if idx % 2 != 0 {
-        temp.update(proof[t].as_ref());
-        temp.update(node.as_ref());
-    } 
-    if idx % 2 == 0{
-        temp.update(node.as_ref());
-        temp.update(proof[t].as_ref());
+    let mut binary_index = Vec::new();
+    let mut index = index;
+    for _ in 0..proof.len() {
+        binary_index.push(index % 2);
+        index /= 2;
     }
-    idx = idx / 2;
-    node = temp.finish().into();
-}
-return node == *root;
+    let mut curr_hash = *datum;
+    for i in 0..proof.len() {
+        curr_hash = match binary_index[i] {
+            0 => { // data is on the left, sibling on the right:
+                hash_children(&curr_hash, &proof[i])
+            },
+            1 => { // data is on the right, sibling on the left:
+                hash_children(&proof[i], &curr_hash)
+            },
+            _ => unreachable!(),
+        };
+    }
+    *root == curr_hash
 }
 
 #[cfg(test)]

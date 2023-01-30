@@ -7,36 +7,60 @@ use crate::crypto::hash::{H256, Hashable};
 use std::collections::HashMap;
 
 pub struct Blockchain {
-    // TODO: add fields here as you need, e.g.:
-    //
-    // hash_to_block: HashMap<H256, Block>,
+    //hash_to_block: a HashMap that maps the hash of each block to its corresponding Block struct.
+    hash_to_block: HashMap<H256, Block>,
+    //longest_chain: a vector of hashes of blocks along the longest chain, starting from the genesis block to the tip.
+    longest_chain: Vec<H256>,
 }
 
 impl Blockchain {
-    /// Create a new blockchain, only containing the genesis block
     pub fn new() -> Self {
-        // TODO
-        Blockchain {
-            // TODO
+        //Create a new blockchain, only containing the genesis block
+        let genesis = Block::genesis();
+        let mut blockchain = Blockchain {
+            hash_to_block: HashMap::new(),
+            longest_chain: vec![genesis.hash()],
+        };
+        blockchain.hash_to_block.insert(genesis.hash(), genesis);
+        blockchain
+    }
+
+    pub fn insert(&mut self, block: &Block) {
+        let parent_hash = block.header.parent;
+        let block_hash = block.hash();
+        let parent_block = self.hash_to_block.get(&parent_hash).unwrap();
+        let parent_index = self.longest_chain.iter().position(|&x| x == parent_hash).unwrap();
+        if parent_index == self.longest_chain.len() - 1 {
+            self.hash_to_block.insert(block_hash, block.clone());
+            self.longest_chain.push(block_hash);
+        } else {
+            let new_longest_chain = self.longest_chain[0..=parent_index].to_vec();
+            new_longest_chain.push(block_hash);
+            self.hash_to_block = self.hash_to_block.iter().filter(|(k, _)| new_longest_chain.contains(k)).map(|(k, v)| (*k, v.clone())).collect();
+            self.longest_chain = new_longest_chain;
         }
     }
 
-    /// Insert a block into blockchain
-    pub fn insert(&mut self, block: &Block) {
-        unimplemented!()
-    }
-
-    /// Get the last block's hash of the longest chain
     pub fn tip(&self) -> H256 {
-        unimplemented!()
+        self.longest_chain[self.longest_chain.len() - 1]
     }
 
-    /// Get all the blocks' hashes along the longest chain
     #[cfg(any(test, test_utilities))]
     pub fn all_blocks_in_longest_chain(&self) -> Vec<H256> {
-        unimplemented!()
+        self.longest_chain.clone()
     }
 }
+
+
+
+//     /// Get the last block's hash of the longest chain
+//     pub fn tip(&self) -> H256 {
+//        // unimplemented!()
+//        *self.blocks.last().unwrap()
+    
+//     }
+
+
 
 
 #[cfg(any(test, test_utilities))]

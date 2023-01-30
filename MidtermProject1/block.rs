@@ -40,7 +40,10 @@ fn default_difficulty() -> [u8; 32] {
     // let mut difficulty = [0u8; 32];
     // difficulty[0] = 1;
     // difficulty
-    unimplemented!()
+   // unimplemented!()
+    let mut difficulty = [0u8; 32];
+    difficulty[31]=1;
+    difficulty
 }
 
 impl Block {
